@@ -1,8 +1,6 @@
 from copy import deepcopy
-
+import cupy as cp
 import numpy as np
-
-from Perceptron import Perceptron
 
 def loss(output_data:np.ndarray, expected_output:np.ndarray, derive=False):
     """
@@ -17,7 +15,7 @@ def loss(output_data:np.ndarray, expected_output:np.ndarray, derive=False):
         The squared sum of the difference between the output data and the expected output
     """
     if derive:
-        return np.sum(2 * np.subtract(output_data, expected_output))
+        return np.atleast_1d(2 * np.subtract(output_data, expected_output))
 
     return np.sum(np.square(np.subtract(output_data, expected_output)))
 
@@ -45,9 +43,9 @@ def activation_function(input_data:np.ndarray, derive=False):
     """
 
     if derive:
-        return np.array(input_data > 0)
+        return np.where(input_data > 0, 1, 0.01)
 
-    return np.array(np.maximum(0, input_data))
+    return np.where(input_data > 0, input_data, 0.01 * input_data)
 
 class NeuralNetwork:
     """
@@ -62,6 +60,7 @@ class NeuralNetwork:
     input_size: int
     output_size: int
     hidden_layer_num: int
+    accuracy:float
     neurons_in_layers: list
     weights_mat_list: list
     bias_list: list
@@ -75,89 +74,137 @@ class NeuralNetwork:
         self.weights_mat_list = []
         self.bias_list = []
         self.bet_outputs = []
+        self.accuracy = 0
+        self.generate_bias()
+        self.generate_weights()
 
-    def generate_weights(self, rows, columns):
-        weights_mat = np.random.randn(rows, columns)
-        self.weights_mat_list.append(weights_mat)
-        return weights_mat
+    def generate_weights(self):
+        """
+        Generates random weights for the neural network
+        """
+        # initiate the start
+        self.weights_mat_list.append(np.random.randn(self.input_size, self.neurons_in_layers[0]) * np.sqrt(2 / self.input_size))
 
-    def generate_bias(self, rows):
-        bias_mat = np.random.randn(rows)
-        self.bias_list.append(bias_mat)
-        return bias_mat
+        # hidden layers
+        for i in range(self.hidden_layer_num - 1):
+            self.weights_mat_list.append(np.random.randn(self.neurons_in_layers[i], self.neurons_in_layers[i + 1]) * np.sqrt(2 / self.neurons_in_layers[i]))
 
-    def train(self, input_data:np.ndarray, expected_output:np.ndarray):
+        # final step
+        self.weights_mat_list.append(np.random.randn(self.neurons_in_layers[-1], self.output_size) * np.sqrt(2 / self.neurons_in_layers[-1]))
 
-        final = self.forward_pass(input_data)
-        final = self.back_propagation(input_data, final, expected_output, 0.5)
+    def generate_bias(self):
+        """
+        Generates random biases for the neural network
+        """
+        # initiate the start
+        self.bias_list.append(np.random.randn(self.neurons_in_layers[0]))
 
-        return final
+        # hidden layers
+        for i in range(self.hidden_layer_num - 1):
+            self.bias_list.append(np.random.randn(self.neurons_in_layers[i + 1]))
+
+        # final step
+        self.bias_list.append(np.random.randn(self.output_size))
+
+    def train(self, input_dataset:np.ndarray, expected_output_dataset:np.ndarray, loop:int):
+        """
+        Trains the neural network on the provided dataset and back propagates based on the expected output
+        :param input_dataset: dataset for training
+        :param expected_output_dataset: expected output for each data point
+        :param loop: number of iterations for the training on the dataset
+        """
+        for i in range(loop):
+            for j in range(input_dataset.shape[0]):
+                final = self.forward_pass(input_dataset[j])
+                self.back_propagation(input_dataset[j], expected_output_dataset[j], final, 0.05)
+
+        print(f"This neural network trained on {input_dataset.shape[0]} samples for {loop} iterations")
+
+    def accuracy_measure(self, test_data:np.ndarray, expected_output:np.ndarray, tolerance:float):
+        """
+        Measures the accuracy of the neural network based on the test sample
+        :param test_data: the data points for the test
+        :param expected_output: expected output for each test point
+        :param tolerance: the margin of accepted errors
+        """
+        prediction = np.array([self.forward_pass(test_data[i]) for i in range(test_data.shape[0])])
+        correct = np.sum(np.abs(prediction - expected_output) <= tolerance)
+        self.accuracy = (correct / test_data.shape[0])
+
+    def predict(self, data):
+        """
+        Predicts the output of input data
+        :param data: the input of the neural network
+        :return: the expected score along with the accuracy of the prediction
+        """
+        return f"Score: {self.forward_pass(data)}, Accuracy of Model: {self.accuracy}"
 
 
     def forward_pass(self, input_data:np.ndarray):
         """
         Applies forward passing of input data and calculates the information loss for a given output data
-
-        Args:
-            input_data (np.ndarray): the input data
-
-        Returns:
-            final (np.ndarray): the output data
+        :param input_data: input data points
+        :return: output of the neural network
         """
+        # reset pre-activation values between layers
+        self.bet_outputs = []
+
         # initiate the start
-        self.generate_weights(self.input_size, self.neurons_in_layers[0])
-        self.generate_bias(self.neurons_in_layers[0])
         z_1 = input_data @ self.weights_mat_list[0] + self.bias_list[0]
         self.bet_outputs.append(z_1)
         output = activation_function(self.bet_outputs[-1])
 
         # hidden layers
-        for i in range(self.hidden_layer_num - 1):
-            self.generate_weights(self.neurons_in_layers[i], self.neurons_in_layers[i + 1])
-            self.generate_bias(self.neurons_in_layers[i + 1])
-            z_i = output @ self.weights_mat_list[-1] + self.bias_list[-1]
+        for i in range(1, self.hidden_layer_num):
+            z_i = output @ self.weights_mat_list[i] + self.bias_list[i]
             self.bet_outputs.append(z_i)
             output = activation_function(self.bet_outputs[-1])
 
         # final step
-        self.generate_weights(self.neurons_in_layers[-1], self.output_size)
-        self.generate_bias(self.output_size)
         z_n = output @ self.weights_mat_list[-1] + self.bias_list[-1]
         self.bet_outputs.append(z_n)
         output = activation_function(self.bet_outputs[-1])
 
         # apply softmax to the final output of the neural network
-        final = softmax(output)
+        score = output if self.output_size == 1 else softmax(output)
 
-        return final
+        return score
 
     def back_propagation(self, input_data:np.ndarray, expected_output:np.ndarray, actual_output:np.ndarray, learning_rate:float):
-        old_weights_mat_list = deepcopy(self.weights_mat_list)
+        """
+        Back propagates the loss from output back to input and then updates the weights and biases based on learning rate
+        :param input_data: input data points
+        :param expected_output: expected output for each data point
+        :param actual_output:
+        :param learning_rate:
+        """
         bet_outputs_deltas = []
+        # final layer
+        output_delta = loss(actual_output, expected_output, derive=True) * activation_function(self.bet_outputs[-1],derive=True)
+        bet_outputs_deltas.append(output_delta)
 
-        z_2_error = loss(expected_output, actual_output)
-        z_2_delta = z_2_error * activation_function(actual_output, derive=True)
-        bet_outputs_deltas.append(z_2_delta)
-        self.weights_mat_list[-1] -= self.bet_outputs[-1].T.dot(z_2_delta) * learning_rate
-
+        # Calculating the derivative for each hidden layer
         for i in range(1, self.hidden_layer_num + 1):
-            z_i_error = bet_outputs_deltas[-1].dot(self.weights_mat_list[-i].T)
-            z_i_delta = z_i_error * activation_function(self.bet_outputs[-(i+1)], derive=True)
-            bet_outputs_deltas.append(z_i_delta)
-            self.weights_mat_list[-(i+1)] -= self.bet_outputs[-(i+1)].T.dot(z_i_delta) * learning_rate
+            layer_i_delta = (self.weights_mat_list[-i] @ bet_outputs_deltas[-1]) * activation_function(self.bet_outputs[-(i + 1)], derive=True)
+            bet_outputs_deltas.append(layer_i_delta)
 
-        # z_1_error = z_2_delta.dot(updated_weights_mat_list[-1].T)
-        # z_1_delta = z_1_error * activation_function(self.bet_outputs[-2], derive=True)
-        # updated_weights_mat_list[-2] -= self.bet_outputs[-2].T.dot(z_1_delta) * learning_rate
+        # Calculating the weight and bias gradient
+        for i in range(self.hidden_layer_num + 1):
+            if i == self.hidden_layer_num:
+                activated_output = input_data
+            else:
+                activated_output = activation_function(self.bet_outputs[-(i + 2)])
 
-        print(self.weights_mat_list)
-        print(old_weights_mat_list)
+            weight_gradient = np.outer(activated_output, bet_outputs_deltas[i])
+            bias_gradient = bet_outputs_deltas[i]
+
+            weight_gradient = np.clip(weight_gradient, -1, 1)
+            bias_gradient = np.clip(bias_gradient, -1, 1)
+
+            self.weights_mat_list[-(i + 1)] -= learning_rate * weight_gradient
+            self.bias_list[-(i + 1)] -= learning_rate * bias_gradient
 
 
 
 if __name__ == "__main__":
     print("Hello World")
-
-
-
-
