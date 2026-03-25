@@ -1,51 +1,51 @@
 from copy import deepcopy
 import cupy as cp
-import numpy as np
+import os
 
-def loss(output_data:np.ndarray, expected_output:np.ndarray, derive=False):
+def loss(output_data:cp.ndarray, expected_output:cp.ndarray, derive=False):
     """
     Calculates the information loss for a given output data
 
     Args:
-        output_data (np.ndarray): the actual output data from a neural network
-        expected_output (np.ndarray): the expected output data
+        output_data (cp.ndarray): the actual output data from a neural network
+        expected_output (cp.ndarray): the expected output data
         derive (bool, optional): whether to calculate the derivative or not
 
     Returns:
         The squared sum of the difference between the output data and the expected output
     """
     if derive:
-        return np.atleast_1d(2 * np.subtract(output_data, expected_output))
+        return cp.atleast_1d(2 * cp.subtract(output_data, expected_output))
 
-    return np.sum(np.square(np.subtract(output_data, expected_output)))
+    return cp.sum(cp.square(cp.subtract(output_data, expected_output)))
 
-def softmax(data:np.ndarray):
+def softmax(data:cp.ndarray):
     """
     A final activation step for the last output in a multi-layer neural network. It converts the outputs into probability distribution
 
     Args:
-        data (np.ndarray): the final output of the neural network
+        data (cp.ndarray): the final output of the neural network
 
     Returns:
         probability distribution of the output
     """
-    e_x = np.exp(data - np.max(data))
-    return e_x / np.sum(e_x)
+    e_x = cp.exp(data - cp.max(data))
+    return e_x / cp.sum(e_x)
 
-def activation_function(input_data:np.ndarray, derive=False):
+def activation_function(input_data:cp.ndarray, derive=False):
     """
     Adds non-linearity to the hypothesis in `linear_function()`. In this function, I implemented Rectified Linear Unit (ReLU)
     Args:
-        input_data (np.ndarray): the input data
+        input_data (cp.ndarray): the input data
         derive(bool, optional): whether to calculate the derivative or not
     Returns:
         float: linear estimation
     """
 
     if derive:
-        return np.where(input_data > 0, 1, 0.01)
+        return cp.where(input_data > 0, 1, 0.01)
 
-    return np.where(input_data > 0, input_data, 0.01 * input_data)
+    return cp.where(input_data > 0, input_data, 0.01 * input_data)
 
 class NeuralNetwork:
     """
@@ -83,30 +83,30 @@ class NeuralNetwork:
         Generates random weights for the neural network
         """
         # initiate the start
-        self.weights_mat_list.append(np.random.randn(self.input_size, self.neurons_in_layers[0]) * np.sqrt(2 / self.input_size))
+        self.weights_mat_list.append(cp.random.randn(self.input_size, self.neurons_in_layers[0]) * cp.sqrt(2 / self.input_size))
 
         # hidden layers
         for i in range(self.hidden_layer_num - 1):
-            self.weights_mat_list.append(np.random.randn(self.neurons_in_layers[i], self.neurons_in_layers[i + 1]) * np.sqrt(2 / self.neurons_in_layers[i]))
+            self.weights_mat_list.append(cp.random.randn(self.neurons_in_layers[i], self.neurons_in_layers[i + 1]) * cp.sqrt(2 / self.neurons_in_layers[i]))
 
         # final step
-        self.weights_mat_list.append(np.random.randn(self.neurons_in_layers[-1], self.output_size) * np.sqrt(2 / self.neurons_in_layers[-1]))
+        self.weights_mat_list.append(cp.random.randn(self.neurons_in_layers[-1], self.output_size) * cp.sqrt(2 / self.neurons_in_layers[-1]))
 
     def generate_bias(self):
         """
         Generates random biases for the neural network
         """
         # initiate the start
-        self.bias_list.append(np.random.randn(self.neurons_in_layers[0]))
+        self.bias_list.append(cp.random.randn(self.neurons_in_layers[0]))
 
         # hidden layers
         for i in range(self.hidden_layer_num - 1):
-            self.bias_list.append(np.random.randn(self.neurons_in_layers[i + 1]))
+            self.bias_list.append(cp.random.randn(self.neurons_in_layers[i + 1]))
 
         # final step
-        self.bias_list.append(np.random.randn(self.output_size))
+        self.bias_list.append(cp.random.randn(self.output_size))
 
-    def train(self, input_dataset:np.ndarray, expected_output_dataset:np.ndarray, loop:int):
+    def train(self, input_dataset:cp.ndarray, expected_output_dataset:cp.ndarray, loop:int):
         """
         Trains the neural network on the provided dataset and back propagates based on the expected output
         :param input_dataset: dataset for training
@@ -117,18 +117,20 @@ class NeuralNetwork:
             for j in range(input_dataset.shape[0]):
                 final = self.forward_pass(input_dataset[j])
                 self.back_propagation(input_dataset[j], expected_output_dataset[j], final, 0.05)
+            os.system('clear')
+            print(f"Loop: {i}")
 
         print(f"This neural network trained on {input_dataset.shape[0]} samples for {loop} iterations")
 
-    def accuracy_measure(self, test_data:np.ndarray, expected_output:np.ndarray, tolerance:float):
+    def accuracy_measure(self, test_data:cp.ndarray, expected_output:cp.ndarray, tolerance:float):
         """
         Measures the accuracy of the neural network based on the test sample
         :param test_data: the data points for the test
         :param expected_output: expected output for each test point
         :param tolerance: the margin of accepted errors
         """
-        prediction = np.array([self.forward_pass(test_data[i]) for i in range(test_data.shape[0])])
-        correct = np.sum(np.abs(prediction - expected_output) <= tolerance)
+        prediction = cp.array([self.forward_pass(test_data[i]) for i in range(test_data.shape[0])])
+        correct = cp.sum(cp.abs(prediction - expected_output) <= tolerance)
         self.accuracy = (correct / test_data.shape[0])
 
     def predict(self, data):
@@ -140,7 +142,7 @@ class NeuralNetwork:
         return f"Score: {self.forward_pass(data)}, Accuracy of Model: {self.accuracy}"
 
 
-    def forward_pass(self, input_data:np.ndarray):
+    def forward_pass(self, input_data:cp.ndarray):
         """
         Applies forward passing of input data and calculates the information loss for a given output data
         :param input_data: input data points
@@ -170,7 +172,7 @@ class NeuralNetwork:
 
         return score
 
-    def back_propagation(self, input_data:np.ndarray, expected_output:np.ndarray, actual_output:np.ndarray, learning_rate:float):
+    def back_propagation(self, input_data:cp.ndarray, expected_output:cp.ndarray, actual_output:cp.ndarray, learning_rate:float):
         """
         Back propagates the loss from output back to input and then updates the weights and biases based on learning rate
         :param input_data: input data points
@@ -195,11 +197,11 @@ class NeuralNetwork:
             else:
                 activated_output = activation_function(self.bet_outputs[-(i + 2)])
 
-            weight_gradient = np.outer(activated_output, bet_outputs_deltas[i])
+            weight_gradient = cp.outer(activated_output, bet_outputs_deltas[i])
             bias_gradient = bet_outputs_deltas[i]
 
-            weight_gradient = np.clip(weight_gradient, -1, 1)
-            bias_gradient = np.clip(bias_gradient, -1, 1)
+            weight_gradient = cp.clip(weight_gradient, -1, 1)
+            bias_gradient = cp.clip(bias_gradient, -1, 1)
 
             self.weights_mat_list[-(i + 1)] -= learning_rate * weight_gradient
             self.bias_list[-(i + 1)] -= learning_rate * bias_gradient
