@@ -1,11 +1,3 @@
-from Perceptron import *
-from Neural_Network import *
-import numpy as np
+from Neural_Network_GPU import NeuralNetwork
 
-input_data = np.random.random(3)
-expected_output = np.array([0.2, 0.8])
-
-neural_network = NeuralNetwork(3, 2, 4, [4, 8, 6, 4])
-
-output = neural_network.train(input_data, expected_output)
-# print(output)
+neuralNetwork = NeuralNetwork(10, 2, 3, [6, 7, 6], "ModelNAme")
